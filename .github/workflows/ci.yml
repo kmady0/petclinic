@@ -1,4 +1,4 @@
-﻿name: CI/CD PetClinic
+name: CI/CD PetClinic
 
 on:
   push:
@@ -7,20 +7,53 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Login Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
-
       - name: Build & Push image
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ secrets.DOCKER_USERNAME }}/petclinic:latest
+
+  performance-tests:
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start PetClinic
+        run: |
+          docker run -d --name petclinic -p 8080:8080 ${{ secrets.DOCKER_USERNAME }}/petclinic:latest
+          sleep 30
+
+      - name: Install K6
+        run: |
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo 'deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main' | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update && sudo apt-get install k6
+
+      - name: Run K6 performance tests
+        run: k6 run k6/test.js
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Run Gatling tests
+        run: |
+          cd gatling
+          ./mvnw gatling:test -Dgatling.simulationClass=petclinic.PetClinicSimulation
+
+      - name: Upload Gatling report
+        uses: actions/upload-artifact@v4
+        with:
+          name: gatling-report
+          path: gatling/target/gatling/
