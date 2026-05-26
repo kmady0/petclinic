@@ -52,6 +52,7 @@ jobs:
       - name: Run Gatling tests
         run: |
           cd gatling
+          chmod +x mvnw
           ./mvnw gatling:test -Dgatling.simulationClass=petclinic.PetClinicSimulation
 
       - name: Upload Gatling report
